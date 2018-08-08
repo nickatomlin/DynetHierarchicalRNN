@@ -140,14 +140,14 @@ def prepare_real_data(ls):
 
 pc = dy.ParameterCollection()
 # lstm = dy.LSTMBuilder(LAYERS, INPUT_DIM, HIDDEN_DIM, pc)
-sentence_encoder = dy.LSTMBuilder(1, 5, 10, pc)
-context_encoder = dy.LSTMBuilder(1, 10, 15, pc)
-output_decoder = dy.LSTMBuilder(1, 5, 15, pc)
+sentence_encoder = dy.LSTMBuilder(1, 64, 64, pc)
+context_encoder = dy.LSTMBuilder(1, 64, 64, pc)
+output_decoder = dy.LSTMBuilder(1, 64, 64, pc)
 
-R_param = pc.add_parameters((len(vocab), 15))
+R_param = pc.add_parameters((len(vocab), 64))
 b_param = pc.add_parameters((len(vocab),))
 
-embeddings = pc.add_lookup_parameters((len(vocab), 5))
+embeddings = pc.add_lookup_parameters((len(vocab), 64))
 
 def one_example_backward(input, output):
 	initial_sentence_state = sentence_encoder.initial_state()
@@ -228,7 +228,7 @@ def train(inputs, outputs):
 			# loss_sum += loss.value()
 			batch_loss.append(loss)
 
-			if example_idx % 32 == 0 or example_idx == len(inputs)-1:
+			if example_idx % 16 == 0 or example_idx == len(inputs)-1:
 				batch_loss = dy.esum(batch_loss)
 				loss_sum += batch_loss.value()
 				batch_loss.backward()
