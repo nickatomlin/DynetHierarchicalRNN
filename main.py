@@ -7,6 +7,7 @@ import json
 from sklearn.model_selection import train_test_split
 from tensorflow.python.layers.core import Dense
 import dynet as dy
+from parser import SentenceParser
 
 vocab = ['<PAD>', '$UNK', '<START>', '<END>', 'a', 'b']
 
@@ -85,6 +86,11 @@ def concat_example(num_examples=1000, test_size=4):
 	X, y = zip(*train_data)
 	train(X, y)
 
+def real_example():
+	parser = SentenceParser(unk_threshold=20,
+                  input_directory="data/raw/",
+                  output_directory="data/tmp/")
+	print("Vocab size: {}".format(parser.vocab_size))
 
 def prepare_data(string):
 	vals = string.split()
@@ -197,4 +203,4 @@ def train(inputs, outputs):
 	print(output)
 
 if __name__ == '__main__':
-	translate_example()
+	real_example()
