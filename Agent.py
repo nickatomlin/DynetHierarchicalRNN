@@ -210,6 +210,12 @@ class Agent:
 			print("Epoch: {} | Loss: {}".format(epoch, loss_sum))
 
 
+"""
+Toy examples
+ - Concat operation ["a", "b"] -> "ab"
+ - Translate operation ["ab"] -> "ba"
+"""
+
 def get_random_string(length):
 	"""
 	Get a random "ab"-string with number of characters equal to "length"
@@ -238,7 +244,7 @@ def flip_string(string):
 	return new_string
 
 
-def translate_example(num_examples=100, test_size=4):
+def translate_example(num_examples=100, test_size=4, max_len=10):
 	"""
 	Translate operation:
 	 - All dialogues length two
@@ -247,11 +253,11 @@ def translate_example(num_examples=100, test_size=4):
 	E.g., ["abbba", "baaab"]
 	"""
 	vocab = ['<PAD>', '$UNK', '<START>', '<END>', 'a', 'b']
-	agent = Agent(vocab, hidden_dim=32, minibatch=16, num_epochs=250, num_layers=1)
+	agent = Agent(vocab, hidden_dim=32, minibatch=16, num_epochs=500, num_layers=1)
 
 	data = []
 	for i in range(num_examples):
-		first_string = get_random_string(random.randint(1,5))
+		first_string = get_random_string(random.randint(1, max_len))
 		second_string = flip_string(first_string)
 		encoder_input = agent.prepare_data(["<PAD>", first_string])
 		decoder_input = agent.prepare_data([first_string, second_string])
@@ -263,11 +269,49 @@ def translate_example(num_examples=100, test_size=4):
 	print("\nPredictions")
 	for (example, ground) in test_data:
 		print("-----------")
-		print("Input: {}".format(agent.print_utterance(example[-1])))
-		print("Target: {}".format(agent.print_utterance(ground[-1])))
+		example_input = agent.print_utterance(example[-1])
+		print("Input: {}".format("".join(example_input.split())))
+		example_output = agent.print_utterance(ground[-1])
+		print("Target: {}".format("".join(example_output.split())))
 		prediction = agent.print_utterance(ground[-1])
-		print("Prediction: {}".format(prediction))
+		print("Prediction: {}".format("".join(prediction.split())))
+
+
+def concat_example(num_examples=2500, test_size=4, max_len=7):
+	"""
+	Concat operation:
+	 - All dialogues length three
+	 - Concatenate first two messages into the third message
+
+	E.g., ["ab", "bba", "abbba"]
+	"""
+	vocab = ['<PAD>', '$UNK', '<START>', '<END>', 'a', 'b']
+	agent = Agent(vocab, hidden_dim=32, minibatch=16, num_epochs=100, num_layers=1)
+
+	data = []
+	for i in range(num_examples):
+		first_string = get_random_string(random.randint(1, max_len))
+		second_string = get_random_string(random.randint(1, max_len))
+		third_string = first_string + second_string
+
+		encoder_input = agent.prepare_data(["<PAD>", first_string, second_string])
+		decoder_input = agent.prepare_data([first_string, second_string, third_string])
+		data.append((encoder_input, decoder_input))
+
+	train_data, test_data = train_test_split(data, test_size=test_size)
+	agent.train(train_data)
+
+	print("\nPredictions")
+	for (example, ground) in test_data:
+		print("-----------")
+		first_input = example[-2]
+		second_input = example[-1]
+		print("Input: {} and {}".format("".join(first_input.split()), "".join(second_input.split())))
+		example_output = agent.print_utterance(ground[-1])
+		print("Target: {}".format("".join(example_output.split())))
+		prediction = agent.print_utterance(ground[-1])
+		print("Prediction: {}".format("".join(prediction.split())))
 
 
 if __name__ == '__main__':
-	translate_example()
+	concat_example()
