@@ -286,7 +286,7 @@ def concat_example(num_examples=2500, test_size=4, max_len=7):
 	E.g., ["ab", "bba", "abbba"]
 	"""
 	vocab = ['<PAD>', '$UNK', '<START>', '<END>', 'a', 'b']
-	agent = Agent(vocab, hidden_dim=32, minibatch=16, num_epochs=100, num_layers=1)
+	agent = Agent(vocab, hidden_dim=32, minibatch=16, num_epochs=50, num_layers=1)
 
 	data = []
 	for i in range(num_examples):
@@ -304,8 +304,8 @@ def concat_example(num_examples=2500, test_size=4, max_len=7):
 	print("\nPredictions")
 	for (example, ground) in test_data:
 		print("-----------")
-		first_input = example[-2]
-		second_input = example[-1]
+		first_input = agent.print_utterance(example[-2])
+		second_input = agent.print_utterance(example[-1])
 		print("Input: {} and {}".format("".join(first_input.split()), "".join(second_input.split())))
 		example_output = agent.print_utterance(ground[-1])
 		print("Target: {}".format("".join(example_output.split())))
