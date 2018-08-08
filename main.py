@@ -1,3 +1,8 @@
+"""
+To run this code: 
+ $ python main.py --dynet-autobatch 1
+"""
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -86,11 +91,32 @@ def concat_example(num_examples=1000, test_size=4):
 	X, y = zip(*train_data)
 	train(X, y)
 
+"""
+Negotiation data example:
+"""
+
+parser = SentenceParser(unk_threshold=20,
+				  input_directory="data/raw/",
+				  output_directory="data/tmp/")
+print("Vocab size: {}".format(parser.vocab_size))
+vocab = parser.vocab
 def real_example():
-	parser = SentenceParser(unk_threshold=20,
-                  input_directory="data/raw/",
-                  output_directory="data/tmp/")
-	print("Vocab size: {}".format(parser.vocab_size))
+	# Training
+	train_data = []
+	with open("data/tmp/train.txt", "r") as train_file:
+		for line in train_file:
+			train_example = json.loads(line)
+			train_data.append((prepare_real_data(["<PAD>"]) + prepare_real_data(train_example[:-1]), prepare_real_data(train_example)))
+	X, y = zip(*train_data)
+	train(X, y)
+
+	# Testing
+	example = prepare_real_data(["<PAD>"]) + prepare_real_data(["THEM: i would like the hat and two books"])
+	print(example)
+	print(one_example_forward(example))
+	
+
+
 
 def prepare_data(string):
 	vals = string.split()
@@ -98,6 +124,19 @@ def prepare_data(string):
 	for val in vals:
 		output.append(vocab.index(val))
 	return output
+
+def prepare_real_data(ls):
+	output = []
+	for utt in ls:
+		word_indices = []
+		for word in utt.split():
+			if word in vocab:
+				word_indices.append(vocab.index(word))
+			else:
+				word_indices.append(vocab.index("$UNK"))
+		output.append(word_indices)
+	return output
+
 
 pc = dy.ParameterCollection()
 # lstm = dy.LSTMBuilder(LAYERS, INPUT_DIM, HIDDEN_DIM, pc)
@@ -180,7 +219,7 @@ def one_example_forward(input):
 
 def train(inputs, outputs):
 	trainer = dy.SimpleSGDTrainer(pc)
-	for epoch in range(250):
+	for epoch in range(15):
 		print('Epoch %d' % epoch)
 		batch_loss = []
 		loss_sum = 0
@@ -197,10 +236,6 @@ def train(inputs, outputs):
 				trainer.update()
 				dy.renew_cg()
 		print(loss_sum)
-
-	print(inputs[0])
-	output = one_example_forward(inputs[0])
-	print(output)
 
 if __name__ == '__main__':
 	real_example()
