@@ -105,11 +105,21 @@ class ActionClassifier:
 		h = dy.esum(h)
 		logits = self.MLP2(h)
 
-		return logits
+		# Mask on invalid agreements (used for prediction):
+		mask = []
+		for idx in range(self.agreement_size):
+			agreement = self.agreement_space[idx]
+			valid = 1
+			for i in range(3):
+				if agreement[i] > agreement_vector[i]:
+					valid = 0
+			mask.append(valid)
+
+		return logits, mask
 
 
 	def train_example(self, example):
-		logits = self.get_logits(example)
+		logits, _ = self.get_logits(example)
 		label = [int(val) for val in example[2]]
 
 		label_idx = -999
@@ -123,9 +133,9 @@ class ActionClassifier:
 
 
 	def predict_example(self, example):
-		logits = self.get_logits(example)
+		logits, mask = self.get_logits(example)
 		probs = dy.softmax(logits)
-		agree_idx = np.argmax(probs.npvalue())
+		agree_idx = np.argmax(np.multiply(probs.npvalue(), mask))
 		agreement = self.agreement_space[agree_idx]
 		return agreement
 
@@ -173,7 +183,7 @@ if __name__ == '__main__':
 				  output_directory="data/action/")
 	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
-	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=5)
+	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=15)
 
 	# Training
 	train_data = []
@@ -200,9 +210,14 @@ if __name__ == '__main__':
 
 			test_data.append((example_inputs, example_dialogue, example_label))
 
-	counter = 1
-	for example in test_data[:20]:
-		print("Example {}".format(counter))
-		print(example)
-		print(classifier.predict_example(example))
-		counter += 1
+	counter = 0
+	correct = 0
+	for example in test_data:
+		if example[2] != []:
+			counter += 1
+			result = classifier.predict_example(example)
+			if (result == [int(val) for val in example[2]]):
+				correct += 1
+			else:
+				print(result, example[2])
+	print(correct / counter)
