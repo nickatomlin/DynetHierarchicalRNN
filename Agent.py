@@ -313,4 +313,4 @@ def concat_example(num_examples=2500, test_size=4, max_len=7):
 
 
 if __name__ == '__main__':
-	concat_example()
+	translate_example()

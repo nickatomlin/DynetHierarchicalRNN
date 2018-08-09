@@ -149,8 +149,6 @@ class SentenceParser(Parser):
 	"""
 	For use with hierarchical dialogue model (LIDM), as described in "Hierarchical Text
 	Generation and Planning for Strategic Dialogue."
-
-
 	"""
 	def create_training_examples(self, line):
 		
@@ -159,6 +157,18 @@ class SentenceParser(Parser):
 
 		utterances = dialogue_string.split("<eos>")
 		return [utterances]
+
+
+class BaselineParser(Parser):
+	def create_training_examples(self, line):
+		
+		input_list = self.get_inputs(self.get_tag(line, "input"))
+		dialogue_string = self.get_tag(line, "dialogue")
+
+		utterances = dialogue_string.split("<eos>")
+		example = (input_list, utterances)
+
+		return [example]
 
 
 class RSAParser(Parser):
