@@ -169,7 +169,6 @@ class Agent:
 			log_prob_char = dy.affine_transform([b, R, h_i])
 			probs = dy.softmax(log_prob_char)
 
-			print(probs)
 			vocab_idx = np.argmax(probs.npvalue())
 			if vocab_idx == (self.vocab).index("<END>"):				
 				break
@@ -244,7 +243,7 @@ def flip_string(string):
 	return new_string
 
 
-def translate_example(num_examples=100, test_size=4, max_len=10):
+def translate_example(num_examples=100, test_size=4, max_len=5):
 	"""
 	Translate operation:
 	 - All dialogues length two
@@ -273,7 +272,7 @@ def translate_example(num_examples=100, test_size=4, max_len=10):
 		print("Input: {}".format("".join(example_input.split())))
 		example_output = agent.print_utterance(ground[-1])
 		print("Target: {}".format("".join(example_output.split())))
-		prediction = agent.print_utterance(ground[-1])
+		prediction = agent.print_utterance(agent.predict_example(example))
 		print("Prediction: {}".format("".join(prediction.split())))
 
 
@@ -309,7 +308,7 @@ def concat_example(num_examples=2500, test_size=4, max_len=7):
 		print("Input: {} and {}".format("".join(first_input.split()), "".join(second_input.split())))
 		example_output = agent.print_utterance(ground[-1])
 		print("Target: {}".format("".join(example_output.split())))
-		prediction = agent.print_utterance(ground[-1])
+		prediction = agent.print_utterance(agent.predict_example(example))
 		print("Prediction: {}".format("".join(prediction.split())))
 
 
