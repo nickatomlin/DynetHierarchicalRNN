@@ -84,18 +84,11 @@ class ActionClassifier:
 		return agreements
 
 
-	def train_example(self, example):
+	def get_logits(self, example):
 		agreement_vector = example[0] # size 3
 		encoder_input = example[1]
-		label = [int(val) for val in example[2]]
-
-		label_idx = -999
-		for idx in range(len(self.agreement_space)):
-			if label == self.agreement_space[idx]:
-				label_idx = idx
 
 		A = self.get_agreement_space(agreement_vector)
-
 		logits = self.MLP(agreement_vector)
 		
 		utterance_final_states = []
@@ -111,8 +104,30 @@ class ActionClassifier:
 			h.append(h_t)
 		h = dy.esum(h)
 		logits = self.MLP2(h)
+
+		return logits
+
+
+	def train_example(self, example):
+		logits = self.get_logits(example)
+		label = [int(val) for val in example[2]]
+
+		label_idx = -999
+		for idx in range(len(self.agreement_space)):
+			if label == self.agreement_space[idx]:
+				label_idx = idx
+
+		
 		loss = dy.pickneglogsoftmax(logits, label_idx)
 		return loss		
+
+
+	def predict_example(self, example):
+		logits = self.get_logits(example)
+		probs = dy.softmax(logits)
+		agree_idx = np.argmax(probs.npvalue())
+		agreement = self.agreement_space[agree_idx]
+		return agreement
 
 
 	def prepare_data(self, example):
@@ -158,7 +173,7 @@ if __name__ == '__main__':
 				  output_directory="data/action/")
 	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
-	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64)
+	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=5)
 
 	# Training
 	train_data = []
@@ -174,3 +189,20 @@ if __name__ == '__main__':
 
 	classifier.train(train_data)
 
+	test_data = []
+	with open("data/action/test.txt", "r") as test_file:
+		for line in test_file:
+			test_example = json.loads(line)
+
+			example_inputs = test_example[0]
+			example_dialogue = classifier.prepare_data(test_example[1])
+			example_label = test_example[2]
+
+			test_data.append((example_inputs, example_dialogue, example_label))
+
+	counter = 1
+	for example in test_data[:20]:
+		print("Example {}".format(counter))
+		print(example)
+		print(classifier.predict_example(example))
+		counter += 1
