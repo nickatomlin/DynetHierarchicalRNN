@@ -30,6 +30,18 @@ class BaselineAgent(Agent):
 		self.hbias = self.params.add_parameters((self.hidden_dim, ))
 		self.W2 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
 
+	def init_parameters(self):
+		self.params = dy.ParameterCollection()
+
+		self.embeddings = self.params.add_lookup_parameters((self.vocab_size, self.hidden_dim))
+
+		self.sentence_encoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
+		self.context_encoder = dy.LSTMBuilder(self.num_layers, 2*self.hidden_dim, self.hidden_dim, self.params)
+		self.output_decoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
+
+		self.R = self.params.add_parameters((self.vocab_size, self.hidden_dim))
+		self.b = self.params.add_parameters((self.vocab_size,))
+
 	def MLP(self, vector):
 		W1 = dy.parameter(self.W1)
 		hbias = dy.parameter(self.hbias)
@@ -60,8 +72,9 @@ class BaselineAgent(Agent):
 		sentence_final_states = []
 		for sentence in encoder_input:
 			embedded_sentence = [self.embeddings[word] for word in sentence]
-			embedded_sentence.append(logits)
-			sentence_final_states.append(sentence_initial_state.transduce(embedded_sentence)[-1])
+			final_state = sentence_initial_state.transduce(embedded_sentence)[-1]
+			final_state = dy.concatenate([final_state, logits])
+			sentence_final_states.append(final_state)
 
 		# Context Encoding:
 		context_initial_state = self.context_encoder.initial_state()

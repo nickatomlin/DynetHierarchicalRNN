@@ -171,6 +171,18 @@ class BaselineParser(Parser):
 		return [example]
 
 
+class ActionClassifierParser(Parser):
+	def create_training_examples(self, line):
+		
+		input_list = self.get_inputs(self.get_tag(line, "input"))[:3]
+		dialogue_string = self.get_tag(line, "dialogue")
+
+		utterances = dialogue_string.split("<eos>")
+		example = (input_list, utterances)
+
+		return [example]
+
+
 class RSAParser(Parser):
 	"""
 	Build separate selection and response models for RSA inference calculations.

@@ -189,8 +189,8 @@ class Agent:
 
 	def train(self, examples):
 		num_examples = len(examples)
-
 		trainer = dy.SimpleSGDTrainer(self.params)
+
 		for epoch in range(self.num_epochs):
 			batch_loss = []
 			loss_sum = 0
