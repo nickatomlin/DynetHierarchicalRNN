@@ -10,16 +10,32 @@ import dynet as dy
 from parser import ActionClassifierParser
 
 class ActionClassifier:
-	def __init__(self, hidden_dim=256, num_epochs=5):
+	def __init__(self, vocab, hidden_dim=256, minibatch=16, num_epochs=5, num_layers=1):
 		self.hidden_dim = hidden_dim
+		self.minibatch = minibatch
 		self.num_epochs = num_epochs
+		self.num_layers = num_layers
+		self.vocab = vocab
+		self.vocab_size = len(vocab)
+		self.init_parameters()
+
 
 	def init_parameters(self):
+		self.params = dy.ParameterCollection()
+		self.embeddings = self.params.add_lookup_parameters((self.vocab_size, self.hidden_dim))
+		self.sentence_encoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
+
 		# Agreement space:
 		input_size = 3 # corresponds to agreement space
 		self.W1 = self.params.add_parameters((self.hidden_dim, input_size))
 		self.hbias = self.params.add_parameters((self.hidden_dim, ))
 		self.W2 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
+
+		# Agreement softmax:
+		self.W1 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
+		self.hbias = self.params.add_parameters((self.hidden_dim, ))
+		self.W2 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
+
 
 	def MLP(self, vector):
 		W1 = dy.parameter(self.W1)
@@ -31,23 +47,58 @@ class ActionClassifier:
 		logits = W2 * h
 		return logits
 
+
 	def encode(self, utterance):
 		utterance_initial_state = self.sentence_encoder.initial_state()
 		embedded_utterance = [self.embeddings[word] for word in utterance]
 		utterance_final_state = utterance_initial_state.transduce(embedded_utterance)[-1]
 		return utterance_final_state
 
+
+	def get_agreement_space(self, agreement_vector):
+		agreements = []
+		for i in range(agreement_vector[0] + 1):
+			for j in range(agreement_vector[1] + 1):
+				for k in range(agreement_vector[2] + 1):
+					agreements.append([i,j,k])
+		return agreements
+
+
 	def train_example(self, example):
-		goal_vector = example[0]
+		agreement_vector = example[0] # size 3
 		encoder_input = example[1]
 		label = example[2]
+		agreement_space = self.get_agreement_space([7,7,7])
+		
 
 		logits = self.MLP(agreement_vector)
 		
 		utterance_final_states = []
 		for utterance in encoder_input:
-			final_state = encode(utterance)
+			final_state = self.encode(utterance)
 			utterance_final_states.append(final_state)
+
+		h = []
+		for utterance in encoder_input:
+			final_state = self.encode(utterance)
+			a_t = dy.circ_conv(final_state, logits)
+			h_t = dy.cmult(final_state, a_t)
+			h.append(h_t)
+		h = dy.esum(h)
+
+
+
+	def prepare_data(self, example):
+		vectorized_example = []
+		for utterance in example:
+			vectorized_utterance = []
+			for word in utterance.split():
+				if word in self.vocab:
+					vectorized_utterance.append(self.vocab.index(word))
+				else:
+					vectorized_utterance.append(self.vocab.index("$UNK"))
+			vectorized_example.append(vectorized_utterance)
+		return vectorized_example
 
 
 	def train(self, examples):
@@ -72,9 +123,26 @@ class ActionClassifier:
 			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
 
+
 if __name__ == '__main__':
 	parser = ActionClassifierParser(unk_threshold=20,
 				  input_directory="data/raw/",
 				  output_directory="data/action/")
 	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
+	classifier = ActionClassifier(vocab=parser.vocab)
+
+	# Training
+	train_data = []
+	with open("data/action/train.txt", "r") as train_file:
+		for line in train_file:
+			train_example = json.loads(line)
+
+			example_inputs = train_example[0]
+			example_dialogue = classifier.prepare_data(train_example[1])
+			example_label = train_example[2]
+
+			train_data.append((example_inputs, example_dialogue, example_label))
+
+	classifier.train(train_data)
+

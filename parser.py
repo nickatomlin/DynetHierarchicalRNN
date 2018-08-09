@@ -125,6 +125,13 @@ class Parser(object):
 		"""
 		return list(map(int, inputs.split()))
 
+	def get_outputs(self, outputs):
+		"""
+		Given a string of outputs (e.g., as returned from get_tag), return the
+		YOU: perspective agreements (e.g., [2, 1, 0]).
+		"""
+		return [word[-1] for word in outputs.split()]
+
 
 class FBParser(Parser):
 	"""
@@ -176,9 +183,14 @@ class ActionClassifierParser(Parser):
 		
 		input_list = self.get_inputs(self.get_tag(line, "input"))[:3]
 		dialogue_string = self.get_tag(line, "dialogue")
+		outputs = self.get_tag(line, "output")
+		if "<disagree>" in outputs or "<no_agreement>" in outputs:
+			outputs = []
+		else:
+			outputs = self.get_outputs(outputs)[:3]
 
 		utterances = dialogue_string.split("<eos>")
-		example = (input_list, utterances)
+		example = (input_list, utterances, outputs)
 
 		return [example]
 
