@@ -17,6 +17,7 @@ class ActionClassifier:
 		self.num_layers = num_layers
 		self.vocab = vocab
 		self.vocab_size = len(vocab)
+		self.init_agreement_space()
 		self.init_parameters()
 
 
@@ -32,9 +33,18 @@ class ActionClassifier:
 		self.W2 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
 
 		# Agreement softmax:
-		self.W1 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
-		self.hbias = self.params.add_parameters((self.hidden_dim, ))
-		self.W2 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
+
+		self.W3 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
+		self.hbias2 = self.params.add_parameters((self.hidden_dim, ))
+		self.W4 = self.params.add_parameters((self.agreement_size, self.hidden_dim))
+
+	def init_agreement_space(self):
+		possible_agreements = self.get_agreement_space([7,7,7])
+		self.agreement_space = []
+		for agreement in possible_agreements:
+			if sum(agreement) <= 7:
+				self.agreement_space.append(agreement)
+		self.agreement_size = len(self.agreement_space)
 
 
 	def MLP(self, vector):
@@ -45,6 +55,16 @@ class ActionClassifier:
 		x = dy.inputVector(vector)
 		h = dy.affine_transform([hbias, W1, x])
 		logits = W2 * h
+		return logits
+
+
+	def MLP2(self, vector):
+		W3 = dy.parameter(self.W3)
+		hbias2 = dy.parameter(self.hbias2)
+		W4 = dy.parameter(self.W4)
+
+		h = dy.affine_transform([hbias2, W3, vector])
+		logits = W4 * h
 		return logits
 
 
@@ -68,8 +88,8 @@ class ActionClassifier:
 		agreement_vector = example[0] # size 3
 		encoder_input = example[1]
 		label = example[2]
-		agreement_space = self.get_agreement_space([7,7,7])
-		
+
+		A = self.get_agreement_space(agreement_vector)
 
 		logits = self.MLP(agreement_vector)
 		
@@ -85,7 +105,8 @@ class ActionClassifier:
 			h_t = dy.cmult(final_state, a_t)
 			h.append(h_t)
 		h = dy.esum(h)
-
+		logits = self.MLP2(h)
+		print(logits.npvalue().shape)
 
 
 	def prepare_data(self, example):
