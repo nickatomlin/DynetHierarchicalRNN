@@ -206,7 +206,7 @@ class Agent:
 					batch_loss = []
 					trainer.update()
 					dy.renew_cg()
-			print("Epoch: {} | Loss: {}".format(epoch, loss_sum))
+			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
 
 """
