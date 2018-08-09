@@ -87,7 +87,12 @@ class ActionClassifier:
 	def train_example(self, example):
 		agreement_vector = example[0] # size 3
 		encoder_input = example[1]
-		label = example[2]
+		label = [int(val) for val in example[2]]
+
+		label_idx = -999
+		for idx in range(len(self.agreement_space)):
+			if label == self.agreement_space[idx]:
+				label_idx = idx
 
 		A = self.get_agreement_space(agreement_vector)
 
@@ -106,7 +111,8 @@ class ActionClassifier:
 			h.append(h_t)
 		h = dy.esum(h)
 		logits = self.MLP2(h)
-		print(logits.npvalue().shape)
+		loss = dy.pickneglogsoftmax(logits, label_idx)
+		return loss		
 
 
 	def prepare_data(self, example):
@@ -130,8 +136,9 @@ class ActionClassifier:
 			batch_loss = []
 			loss_sum = 0
 			for idx in range(num_examples):
-				loss = self.train_example(examples[idx])
-				batch_loss.append(loss)
+				if (examples[idx][2] != []):
+					loss = self.train_example(examples[idx])
+					batch_loss.append(loss)
 
 				# Minibatching:
 				if (idx % self.minibatch == 0) or (idx + 1 == num_examples):
@@ -151,7 +158,7 @@ if __name__ == '__main__':
 				  output_directory="data/action/")
 	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
-	classifier = ActionClassifier(vocab=parser.vocab)
+	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64)
 
 	# Training
 	train_data = []

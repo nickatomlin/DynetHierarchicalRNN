@@ -168,7 +168,6 @@ class SentenceParser(Parser):
 
 class BaselineParser(Parser):
 	def create_training_examples(self, line):
-		
 		input_list = self.get_inputs(self.get_tag(line, "input"))
 		dialogue_string = self.get_tag(line, "dialogue")
 
@@ -180,11 +179,10 @@ class BaselineParser(Parser):
 
 class ActionClassifierParser(Parser):
 	def create_training_examples(self, line):
-		
 		input_list = self.get_inputs(self.get_tag(line, "input"))[:3]
 		dialogue_string = self.get_tag(line, "dialogue")
 		outputs = self.get_tag(line, "output")
-		if "<disagree>" in outputs or "<no_agreement>" in outputs:
+		if "<disagree>" in outputs or "<no_agreement>" in outputs or "<disconnect>" in outputs:
 			outputs = []
 		else:
 			outputs = self.get_outputs(outputs)[:3]
