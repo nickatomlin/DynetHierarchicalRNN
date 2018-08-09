@@ -15,7 +15,7 @@ import dynet as dy
 from parser import SentenceParser
 from parser import BaselineParser
 from agent import Agent
-from baseline_agent import BaselineAgent
+from baseline_clusters import BaselineClusters
 
 """
 Negotiation data example:
@@ -28,19 +28,21 @@ def main():
 				  output_directory="data/tmp/")
 	print("Vocab size: {}".format(parser.vocab_size))
 
-	agent = BaselineAgent(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)
+	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)
 
 	# Training
 	train_data = []
-	with open("data/tmp/train.txt", "r") as train_file:
+	with open("data/action/train.txt", "r") as train_file:
 		for line in train_file:
 			train_example = json.loads(line)
 
 			example_inputs = train_example[0]
 			example_dialogue = train_example[1]
+			example_agreement = [int(val) for val in train_example[2]]
 			train_data.append((
 				(example_inputs, agent.prepare_data(["<PAD>"] + example_dialogue[:-1])),
-				agent.prepare_data(example_dialogue)))
+				agent.prepare_data(example_dialogue),
+				example_agreement))
 	agent.train(train_data)
 
 	# Testing

@@ -10,7 +10,7 @@ import dynet as dy
 from parser import ActionClassifierParser
 
 class ActionClassifier:
-	def __init__(self, vocab, hidden_dim=256, minibatch=16, num_epochs=5, num_layers=1):
+	def __init__(self, vocab, hidden_dim=256, minibatch=16, num_epochs=15, num_layers=1):
 		self.hidden_dim = hidden_dim
 		self.minibatch = minibatch
 		self.num_epochs = num_epochs
@@ -183,7 +183,7 @@ if __name__ == '__main__':
 				  output_directory="data/action/")
 	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
-	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=15)
+	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=30)
 
 	# Training
 	train_data = []
@@ -210,6 +210,7 @@ if __name__ == '__main__':
 
 			test_data.append((example_inputs, example_dialogue, example_label))
 
+
 	counter = 0
 	correct = 0
 	for example in test_data:
@@ -218,6 +219,4 @@ if __name__ == '__main__':
 			result = classifier.predict_example(example)
 			if (result == [int(val) for val in example[2]]):
 				correct += 1
-			else:
-				print(result, example[2])
-	print(correct / counter)
+	print("Percent correct: {}%".format(str(100*correct / counter)[:4]))
