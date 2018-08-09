@@ -28,7 +28,7 @@ def main():
 				  output_directory="data/tmp/")
 	print("Vocab size: {}".format(parser.vocab_size))
 
-	agent = BaselineAgent(parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)
+	agent = BaselineAgent(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)
 
 	# Training
 	train_data = []
@@ -47,6 +47,12 @@ def main():
 	example = (
 		[1, 4, 4, 1, 1, 2],
 		agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books", "YOU: ok deal"]))
+	prediction = agent.predict_example(example)
+	print(agent.print_utterance(prediction))
+
+	example = (
+		[1, 4, 4, 1, 1, 2],
+		agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books"]))
 	prediction = agent.predict_example(example)
 	print(agent.print_utterance(prediction))
 

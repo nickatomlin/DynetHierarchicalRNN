@@ -41,14 +41,14 @@ class Agent:
 	def init_parameters(self):
 		self.params = dy.ParameterCollection()
 
-		self.embeddings = (self.params).add_lookup_parameters((self.vocab_size, self.hidden_dim))
+		self.embeddings = self.params.add_lookup_parameters((self.vocab_size, self.hidden_dim))
 
 		self.sentence_encoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
 		self.context_encoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
 		self.output_decoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
 
-		self.R = (self.params).add_parameters((self.vocab_size, self.hidden_dim))
-		self.b = (self.params).add_parameters((self.vocab_size,))
+		self.R = self.params.add_parameters((self.vocab_size, self.hidden_dim))
+		self.b = self.params.add_parameters((self.vocab_size,))
 
 
 	def prepare_data(self, example):
@@ -87,14 +87,14 @@ class Agent:
 		"""
 
 		# Sentence Encoding:
-		sentence_initial_state = (self.sentence_encoder).initial_state()
+		sentence_initial_state = self.sentence_encoder.initial_state()
 		sentence_final_states = []
 		for sentence in encoder_input:
 			embedded_sentence = [self.embeddings[word] for word in sentence]
 			sentence_final_states.append(sentence_initial_state.transduce(embedded_sentence)[-1])
 
 		# Context Encoding:
-		context_initial_state = (self.context_encoder).initial_state()
+		context_initial_state = self.context_encoder.initial_state()
 		context_outputs = context_initial_state.transduce(sentence_final_states)
 
 		return context_outputs
@@ -129,7 +129,7 @@ class Agent:
 			decoder_target = ground_label + [self.vocab.index("<END>")]
 
 			embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
-			decoder_initial_state = (self.output_decoder).initial_state(vecs=[context_output, context_output])
+			decoder_initial_state = self.output_decoder.initial_state(vecs=[context_output, context_output])
 			decoder_output = decoder_initial_state.transduce(embedded_decoder_input)
 			log_probs_char = [ dy.affine_transform([b, R, h_t]) for h_t in decoder_output ]
 
@@ -160,7 +160,7 @@ class Agent:
 
 		losses = []
 
-		state = (self.output_decoder).initial_state(vecs=[context_final_state, context_final_state])
+		state = self.output_decoder.initial_state(vecs=[context_final_state, context_final_state])
 		state = state.add_input(self.embeddings[self.vocab.index("<START>")])
 
 		decoding = []
@@ -170,7 +170,7 @@ class Agent:
 			probs = dy.softmax(log_prob_char)
 
 			vocab_idx = np.argmax(probs.npvalue())
-			if vocab_idx == (self.vocab).index("<END>"):				
+			if vocab_idx == self.vocab.index("<END>"):				
 				break
 			decoding.append(vocab_idx)
 
