@@ -173,7 +173,7 @@ class ActionClassifier:
 					batch_loss = []
 					trainer.update()
 					dy.renew_cg()
-			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+			print("(Classifier) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
 
 

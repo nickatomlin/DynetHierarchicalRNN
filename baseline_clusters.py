@@ -22,7 +22,7 @@ class BaselineClusters(BaselineAgent):
 	num_clusters : int
 		Number of discrete latent variables z(t) for each agreemeent space A.
 	"""
-	def __init__(self, num_clusters=50, temp=0.1, **kwargs):
+	def __init__(self, num_clusters=50, temp=1, **kwargs):
 		self.num_clusters = num_clusters
 		self.temp = temp
 		super(BaselineClusters, self).__init__(**kwargs)
@@ -83,7 +83,8 @@ class BaselineClusters(BaselineAgent):
 			numerator = dy.exp((dy.log(pi_i)+g_i)/self.temp)
 			y.append(dy.cdiv(numerator, denom))
 
-		return dy.concatenate(y)
+		logits = dy.concatenate(y)
+		return logits
 
 
 	def pa(self, state):
