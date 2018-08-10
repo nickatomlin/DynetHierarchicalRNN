@@ -203,11 +203,11 @@ class BaselineClusters(BaselineAgent):
 		b = dy.parameter(self.b)
 
 		losses = []
-		for (context_output, ground_label) in zip(context_outputs, ground_labels):
+		for (context_output, ground_label) in zip(context_outputs, ground_labels[0]):
 			# context_ouput : state from single timestep of context_encoder
 			# ground_label : ground truth labels for given sentence (for teacher forcing)
-			decoder_input = [self.vocab.index("<START>")] + ground_label[0]
-			decoder_target = ground_label[0] + [self.vocab.index("<END>")]
+			decoder_input = [self.vocab.index("<START>")] + ground_label
+			decoder_target = ground_label + [self.vocab.index("<END>")]
 
 			embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
 			decoder_initial_state = self.output_decoder.initial_state(vecs=[context_output, context_output])
