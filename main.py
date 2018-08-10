@@ -27,7 +27,7 @@ def main():
 	parser = ActionClassifierParser(unk_threshold=20,
 				  input_directory="data/raw/",
 				  output_directory="data/action/")
-	parser.parse()
+	# parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
 
 	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)

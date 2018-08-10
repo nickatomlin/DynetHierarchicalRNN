@@ -22,8 +22,9 @@ class BaselineClusters(BaselineAgent):
 	num_clusters : int
 		Number of discrete latent variables z(t) for each agreemeent space A.
 	"""
-	def __init__(self, num_clusters=50, **kwargs):
+	def __init__(self, num_clusters=50, temp=0.1, **kwargs):
 		self.num_clusters = num_clusters
+		self.temp = temp
 		super(BaselineClusters, self).__init__(**kwargs)
 		# self.classifier = ActionClassifier(vocab=self.vocab, hidden_dim=64, num_epochs=30)
 		self.classifier = ActionClassifier(vocab=self.vocab, hidden_dim=16, num_epochs=1)
@@ -62,15 +63,32 @@ class BaselineClusters(BaselineAgent):
 
 	def pz(self, eq):
 		"""
-		Calculate distribution p_z over discrete latent variables, given
-		concatenated vector [e,q].
+		Gumbel softmax on distribution over z.
 		"""
 		W = dy.parameter(self.W)
-		return  dy.softmax(W * eq)
+		prob = dy.softmax(W * eq)
+		gumbel = dy.random_gumbel(self.num_clusters)
+		y = []
+		denom = []
+		for z in range(self.num_clusters):
+			pi_i = prob[z]
+			g_i = gumbel[z]
+			val = dy.exp((dy.log(pi_i)+g_i)/self.temp)
+			denom.append(val)
+		denom = dy.esum(denom)
+
+		for z in range(self.num_clusters):
+			pi_i = prob[z]
+			g_i = gumbel[z]
+			numerator = dy.exp((dy.log(pi_i)+g_i)/self.temp)
+			y.append(dy.cdiv(numerator, denom))
+
+		return dy.concatenate(y)
+
 
 	def pa(self, state):
 		"""
-		Calculate the probability of action given state.
+		Calculate the probability distribution of actions given state.
 		"""
 		W5 = dy.parameter(self.W5)
 		hbias3 = dy.parameter(self.hbias3)
@@ -81,11 +99,12 @@ class BaselineClusters(BaselineAgent):
 		return logits
 
 
-	def px(self, state):
+	def px(self, state, utterance):
 		"""
 		Calculate the probability of utterance given state.
 		"""
-		decoder_initial_state = self.output_decoder.initial_state(vecs=[context_output, context_output])
+		decoder_initial_state = self.output_decoder.initial_state(vecs=[state, state])
+
 
 
 
@@ -94,23 +113,26 @@ class BaselineClusters(BaselineAgent):
 		Calculate the probability of action and utterance given z.
 		"""
 		new_state = state.add_input(one_hot_z).h()[-1]
-		pa = self.pa(new_state)
-		px = self.px(new_state)
 
 		encoder_input = example[0]
-		ground_labels = example[1]
-		text = ground_labels[0]
-
-		prev_text = text[:turn_idx]
-		if prev_text == []:
-			prev_text = [[self.vocab.index("<PAD>")]]
+		labels = example[1]
+		text = labels[0]
 		goal_utterance = text[turn_idx]
+
+		pa = self.pa(new_state)
+		px = self.px(new_state, goal_utterance)
+		
 
 		# Predict agreement based on z:
 		
 
 		## Action probability:
+		prev_text = text[:turn_idx]
+		if prev_text == []:
+			prev_text = [[self.vocab.index("<PAD>")]]
+
 		agreement_space = encoder_input[0] # of form [1, 4, 4]
+		agreement = labels[1]
 		cdata = [agreement_space, prev_text, agreement]
 
 		self.classifier.predict_example(cdata)
@@ -146,32 +168,57 @@ class BaselineClusters(BaselineAgent):
 		encoder_input = encoder_input[1]
 		logits = self.MLP(goal_vector)
 		sentence_initial_state = self.sentence_encoder.initial_state()
-		sentence_final_states = []
 		pzs = []
 		for sentence in encoder_input:
 			embedded_sentence = [self.embeddings[word] for word in sentence]
 			final_state = sentence_initial_state.transduce(embedded_sentence)[-1]
 			final_state = dy.concatenate([final_state, logits])
-			sentence_final_states.append(final_state)
+			# Stochastic node:
 			pzs.append(self.pz(final_state))
 
 		# Iterate over utterances
-		z_star = -999
-		state = self.context_encoder.initial_state()
-		for idx in range(len(pzs)):
-			pz = pzs[idx]
-			for z in range(self.num_clusters):
-				one_hot_z = np.zeros(self.num_clusters)
-				one_hot_z[z] = 1
-				pz[z] *= self.papx(example, idx, dy.inputVector(one_hot_z), state)
+		# z_star = -999
+		# state = self.context_encoder.initial_state()
+		# losses = []
+		# for idx in range(len(pzs)):
+		# 	pz = pzs[idx]
+		# 	for z in range(self.num_clusters):
+		# 		one_hot_z = np.zeros(self.num_clusters)
+		# 		one_hot_z[z] = 1
+		# 		pz[z] *= self.papx(example, idx, dy.inputVector(one_hot_z), state)
+
+		# for idx in range(len(pzs):
+
 
 
 		# Context Encoding:
 
-		# context_initial_state = self.context_encoder.initial_state()
-		# context_outputs = context_initial_state.transduce(sentence_final_states)
+		context_initial_state = self.context_encoder.initial_state()
+		context_outputs = context_initial_state.transduce(pzs)
 
-		return context_outputs
+		
+		# Decoder:
+
+		R = dy.parameter(self.R)
+		b = dy.parameter(self.b)
+
+		losses = []
+		for (context_output, ground_label) in zip(context_outputs, ground_labels):
+			# context_ouput : state from single timestep of context_encoder
+			# ground_label : ground truth labels for given sentence (for teacher forcing)
+			decoder_input = [self.vocab.index("<START>")] + ground_label[0]
+			decoder_target = ground_label[0] + [self.vocab.index("<END>")]
+
+			embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
+			decoder_initial_state = self.output_decoder.initial_state(vecs=[context_output, context_output])
+			decoder_output = decoder_initial_state.transduce(embedded_decoder_input)
+			log_probs_char = [ dy.affine_transform([b, R, h_t]) for h_t in decoder_output ]
+
+			for (log_prob, target) in zip(log_probs_char, decoder_target):
+				losses.append(dy.pickneglogsoftmax(log_prob, target))
+
+		loss = dy.esum(losses)
+		return loss
 
 
 	def train(self, examples):
