@@ -219,4 +219,4 @@ if __name__ == '__main__':
 			result = classifier.predict_example(example)
 			if (result == [int(val) for val in example[2]]):
 				correct += 1
-	print("Percent correct: {}%".format(str(100*correct / counter)[:4]))
+	print("Test accuracy: {}%".format(str(100*correct / counter)[:4]))
