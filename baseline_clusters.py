@@ -184,7 +184,7 @@ class BaselineClusters(BaselineAgent):
 		text = labels[0]
 		goal_utterance = text[turn_idx]
 
-		pa = self.pa(state)
+		pa = dy.softmax(self.pa(state))
 		px = self.px(state, goal_utterance)
 
 		# Calculate px() log probability:
@@ -302,6 +302,7 @@ class BaselineClusters(BaselineAgent):
 					max_prob = log_prob
 					z_star = z
 					z_star_onehot = one_hot_z
+			# print(z_star)
 			context_state = context_state.add_input(z_star_onehot)
 			z_list.append(z_star)
 
