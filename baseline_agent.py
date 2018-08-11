@@ -1,11 +1,8 @@
 import numpy as np
-import pandas as pd
-import tensorflow as tf
 import warnings
 import random
 import json
 from sklearn.model_selection import train_test_split
-from tensorflow.python.layers.core import Dense
 import dynet as dy
 from parser import SentenceParser
 from agent import Agent

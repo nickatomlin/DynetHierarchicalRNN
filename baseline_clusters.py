@@ -1,11 +1,8 @@
 import numpy as np
-import pandas as pd
-import tensorflow as tf
 import warnings
 import random
 import json
 from sklearn.model_selection import train_test_split
-from tensorflow.python.layers.core import Dense
 import dynet as dy
 from parser import SentenceParser
 from baseline_agent import BaselineAgent
@@ -59,6 +56,14 @@ class BaselineClusters(BaselineAgent):
 		self.W5 = self.params.add_parameters((self.hidden_dim, self.hidden_dim))
 		self.hbias3 = self.params.add_parameters((self.hidden_dim, ))
 		self.W6 = self.params.add_parameters((self.classifier.agreement_size, self.hidden_dim))
+
+
+	def prob_z(self, eq):
+		"""
+		Return probability distribution over z.
+		"""
+		W = dy.parameter(self.W)
+		return dy.softmax(W * eq)
 
 
 	def pz(self, eq):
@@ -119,7 +124,7 @@ class BaselineClusters(BaselineAgent):
 
 	def papx(self, example, turn_idx, state):
 		"""
-		Calculate the probability of action and utterance given z.
+		Calculate the cost of utterance and action given z.
 		"""
 
 		encoder_input = example[0]
@@ -170,6 +175,41 @@ class BaselineClusters(BaselineAgent):
 		return dy.esum([action_diverge, text_loss])
 
 
+	def log_prob_papx(self, example, turn_idx, state):
+		"""
+		Calculate the log probability of utterance and action given z.
+		"""
+		encoder_input = example[0]
+		labels = example[1]
+		text = labels[0]
+		goal_utterance = text[turn_idx]
+
+		pa = self.pa(state)
+		px = self.px(state, goal_utterance)
+
+		# Calculate px() log probability:
+		prob_px = []
+		decoder_target = goal_utterance + [self.vocab.index("<END>")]
+		for (prob, target) in zip(px, decoder_target):
+			prob = dy.softmax(prob)
+			prob_px.append(dy.log(prob[target]))
+		log_prob_px = dy.esum(prob_px)
+
+		# Calculate pa() log probability:
+		prev_text = text[:turn_idx]
+		if prev_text == []:
+			prev_text = [[self.vocab.index("<PAD>")]]
+
+		agreement_space = encoder_input[0] # of form [1, 4, 4]
+		agreement = labels[1]
+		cdata = [agreement_space, prev_text, agreement]
+		action = self.classifier.predict_example_idx(cdata)
+		log_prob_pa = dy.log(dy.pick(pa, index=action))
+		# print("PA: {}".format(log_prob_pa.npvalue()))
+		# print("PX: {}".format(log_prob_px.npvalue()))
+
+		return dy.esum([log_prob_px, log_prob_pa])
+
 
 	def train_example(self, example):
 		"""
@@ -202,18 +242,6 @@ class BaselineClusters(BaselineAgent):
 			# Stochastic node:
 			pzs.append(self.pz(final_state))
 
-		# Iterate over utterances
-		# z_star = -999
-		# state = self.context_encoder.initial_state()
-		# losses = []
-		# for idx in range(len(pzs)):
-		# 	pz = pzs[idx]
-		# 	for z in range(self.num_clusters):
-		# 		one_hot_z = np.zeros(self.num_clusters)
-		# 		one_hot_z[z] = 1
-		# 		pz[z] *= self.papx(example, idx, dy.inputVector(one_hot_z), state)
-
-
 		# Context Encoding:
 
 		context_initial_state = self.context_encoder.initial_state()
@@ -225,19 +253,78 @@ class BaselineClusters(BaselineAgent):
 			papx = self.papx(example, idx, state)
 			losses.append(papx)
 
-
-
-		# for (context_output, ground_label) in zip(context_outputs, ground_labels[0]):
-		# 	# context_ouput : state from single timestep of context_encoder
-		# 	# ground_label : ground truth labels for given sentence (for teacher forcing)
-		# 	log_probs_char = self.px(context_ouput, ground_label)
-		# 	pa = self.pa(context_ouput)
-
-		# 	for (log_prob, target) in zip(log_probs_char, decoder_target):
-		# 		losses.append(dy.pickneglogsoftmax(log_prob, target))
-
 		loss = dy.esum(losses)
 		return loss
+
+
+	def em_example(self, example):
+		encoder_input = example[0]
+		ground_labels = example[1]
+
+		goal_vector = encoder_input[0]
+		encoder_input = encoder_input[1]
+
+		num_utterances = len(encoder_input)
+
+		logits = self.MLP(goal_vector)
+		sentence_initial_state = self.sentence_encoder.initial_state()
+		pzs = []
+		for sentence in encoder_input:
+			embedded_sentence = [self.embeddings[word] for word in sentence]
+			final_state = sentence_initial_state.transduce(embedded_sentence)[-1]
+			final_state = dy.concatenate([final_state, logits])
+			# Stochastic node:
+			pzs.append(self.prob_z(final_state))
+
+		context_initial_state = self.context_encoder.initial_state()
+		context_state = context_initial_state
+		z_list = []
+		# Expectation
+		for idx in range(num_utterances):
+			pz = pzs[idx]
+			max_prob = dy.scalarInput(-9999)
+			z_star = -99999
+			z_star_onehot = np.zeros(self.num_clusters)
+			z_star_onehot[0] = 1
+			z_star_onehot = dy.inputVector(z_star_onehot)
+			for z in range(self.num_clusters):
+				one_hot_z = np.zeros(self.num_clusters)
+				one_hot_z[z] = 1
+				one_hot_z = dy.inputVector(one_hot_z)
+				state = context_state.add_input(one_hot_z).h()[-1]
+				log_papx = self.log_prob_papx(example, idx, state)
+				log_pz = dy.log(dy.pick(pz, z))
+				# print("PZ: {}".format(log_pz.npvalue()))
+				# print("PAPX: {}".format(log_papx.npvalue()))
+				log_prob = dy.esum([log_papx, log_pz])
+				# print("PROB: {}".format(log_prob.npvalue()))
+				if log_prob.value() > max_prob.value():
+					max_prob = log_prob
+					z_star = z
+					z_star_onehot = one_hot_z
+			context_state = context_state.add_input(z_star_onehot)
+			z_list.append(z_star)
+
+		# Maximization
+		context_state = context_initial_state
+		probs = []
+		for idx in range(num_utterances):
+			pz = pzs[idx]
+			z = z_list[idx]
+			log_pz = dy.log(dy.pick(pz, z))
+			
+			one_hot_z = np.zeros(self.num_clusters)
+			one_hot_z[z] = 1
+			one_hot_z = dy.inputVector(one_hot_z)
+			state = context_state.add_input(one_hot_z).h()[-1]
+			log_papx = self.log_prob_papx(example, idx, state)
+
+			log_prob = dy.esum([log_papx, log_pz])
+			probs.append(log_prob)
+
+		probs = dy.esum(probs)
+		return probs
+
 
 
 	def train(self, examples):
@@ -253,7 +340,8 @@ class BaselineClusters(BaselineAgent):
 		self.classifier.train(classifier_data)
 
 		# Train cluster model:
-		num_examples = len(examples)
+		# num_examples = len(examples)
+		num_examples = 500 # TODO: remove this
 		trainer = dy.SimpleSGDTrainer(self.params)
 
 		for epoch in range(self.num_epochs):
@@ -269,5 +357,22 @@ class BaselineClusters(BaselineAgent):
 			batch_loss = []
 			trainer.update()
 			dy.renew_cg()
+			print("(Clusters) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
-			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+		# Expectation maximization:
+		for epoch in range(self.num_epochs):
+			batch_loss = []
+			loss_sum = 0
+			for idx in range(num_examples):
+				loss = self.em_example(examples[idx])
+				batch_loss.append(loss)
+
+				# Minibatching:
+				if (idx % self.minibatch == 0) or (idx + 1 == num_examples):
+					batch_loss = dy.esum(batch_loss)
+					loss_sum += batch_loss.value()
+					batch_loss.backward()
+					batch_loss = []
+					trainer.update()
+					dy.renew_cg()
+			print("(EM) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))

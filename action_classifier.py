@@ -1,11 +1,8 @@
 import numpy as np
-import pandas as pd
-import tensorflow as tf
 import warnings
 import random
 import json
 from sklearn.model_selection import train_test_split
-from tensorflow.python.layers.core import Dense
 import dynet as dy
 from parser import ActionClassifierParser
 
@@ -130,6 +127,13 @@ class ActionClassifier:
 		
 		loss = dy.pickneglogsoftmax(logits, label_idx)
 		return loss		
+
+
+	def predict_example_idx(self, example):
+		logits, mask = self.get_logits(example)
+		probs = dy.softmax(logits)
+		agree_idx = np.argmax(np.multiply(probs.npvalue(), mask))
+		return agree_idx
 
 
 	def predict_example(self, example):

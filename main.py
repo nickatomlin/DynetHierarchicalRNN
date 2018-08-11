@@ -4,13 +4,10 @@ To run this code:
 """
 
 import numpy as np
-import pandas as pd
-import tensorflow as tf
 import warnings
 import random
 import json
 from sklearn.model_selection import train_test_split
-from tensorflow.python.layers.core import Dense
 import dynet as dy
 from parser import SentenceParser
 from parser import BaselineParser
@@ -30,7 +27,7 @@ def main():
 	# parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
 
-	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=15, num_layers=1)
+	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=1, num_layers=1)
 
 	# Training
 	train_data = []
