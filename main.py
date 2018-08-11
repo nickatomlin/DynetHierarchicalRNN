@@ -48,7 +48,7 @@ def main():
 
 	# Testing
 	example = (
-		[1, 4, 4, 1, 1, 2],
+		[1, 4, 1],
 		agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books", "YOU: ok deal"]))
 	prediction = agent.predict_example(example)
 	print(agent.print_utterance(prediction))

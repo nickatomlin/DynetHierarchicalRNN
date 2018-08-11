@@ -104,30 +104,36 @@ class BaselineClusters(BaselineAgent):
 		"""
 		Calculate the probability of utterance given state.
 		"""
+		R = dy.parameter(self.R)
+		b = dy.parameter(self.b)
+
+		decoder_input = [self.vocab.index("<START>")] + utterance
+
+		embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
 		decoder_initial_state = self.output_decoder.initial_state(vecs=[state, state])
+		decoder_output = decoder_initial_state.transduce(embedded_decoder_input)
+		log_probs_char = [ dy.affine_transform([b, R, h_t]) for h_t in decoder_output ]
+		
+		return log_probs_char
 
 
-
-
-	def papx(self, example, turn_idx, one_hot_z, state):
+	def papx(self, example, turn_idx, state):
 		"""
 		Calculate the probability of action and utterance given z.
 		"""
-		new_state = state.add_input(one_hot_z).h()[-1]
 
 		encoder_input = example[0]
 		labels = example[1]
 		text = labels[0]
 		goal_utterance = text[turn_idx]
 
-		pa = self.pa(new_state)
-		px = self.px(new_state, goal_utterance)
+		pa = self.pa(state)
+		px = self.px(state, goal_utterance)
 		
-
-		# Predict agreement based on z:
-		
-
+		#####################
 		## Action probability:
+		#####################
+		# -> Action Classifier:
 		prev_text = text[:turn_idx]
 		if prev_text == []:
 			prev_text = [[self.vocab.index("<PAD>")]]
@@ -144,9 +150,25 @@ class BaselineClusters(BaselineAgent):
 			if agreement == self.classifier.agreement_space[idx]:
 				label_idx = idx
 		
-		action_prob = dy.softmax(logits)[label_idx]
+		action_prob = dy.softmax(logits)
+		pa = dy.softmax(pa)
 
+		# -> KL Divergence
+
+		action_diverge = dy.cmult(pa, dy.log(dy.cdiv(pa, action_prob)))
+		action_diverge = dy.sum_elems(action_diverge)
+
+		###################
 		## Text probability:
+		###################
+		decoder_target = goal_utterance + [self.vocab.index("<END>")]
+		losses = []
+		for (log_prob, target) in zip(px, decoder_target):
+			losses.append(dy.pickneglogsoftmax(log_prob, target))
+		text_loss = dy.esum(losses)
+
+		return dy.esum([action_diverge, text_loss])
+
 
 
 	def train_example(self, example):
@@ -167,6 +189,9 @@ class BaselineClusters(BaselineAgent):
 
 		goal_vector = encoder_input[0]
 		encoder_input = encoder_input[1]
+
+		num_utterances = len(encoder_input)
+
 		logits = self.MLP(goal_vector)
 		sentence_initial_state = self.sentence_encoder.initial_state()
 		pzs = []
@@ -188,35 +213,28 @@ class BaselineClusters(BaselineAgent):
 		# 		one_hot_z[z] = 1
 		# 		pz[z] *= self.papx(example, idx, dy.inputVector(one_hot_z), state)
 
-		# for idx in range(len(pzs):
-
-
 
 		# Context Encoding:
 
 		context_initial_state = self.context_encoder.initial_state()
 		context_outputs = context_initial_state.transduce(pzs)
 
-		
-		# Decoder:
-
-		R = dy.parameter(self.R)
-		b = dy.parameter(self.b)
-
 		losses = []
-		for (context_output, ground_label) in zip(context_outputs, ground_labels[0]):
-			# context_ouput : state from single timestep of context_encoder
-			# ground_label : ground truth labels for given sentence (for teacher forcing)
-			decoder_input = [self.vocab.index("<START>")] + ground_label
-			decoder_target = ground_label + [self.vocab.index("<END>")]
+		for idx in range(num_utterances):
+			state = context_outputs[idx]
+			papx = self.papx(example, idx, state)
+			losses.append(papx)
 
-			embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
-			decoder_initial_state = self.output_decoder.initial_state(vecs=[context_output, context_output])
-			decoder_output = decoder_initial_state.transduce(embedded_decoder_input)
-			log_probs_char = [ dy.affine_transform([b, R, h_t]) for h_t in decoder_output ]
 
-			for (log_prob, target) in zip(log_probs_char, decoder_target):
-				losses.append(dy.pickneglogsoftmax(log_prob, target))
+
+		# for (context_output, ground_label) in zip(context_outputs, ground_labels[0]):
+		# 	# context_ouput : state from single timestep of context_encoder
+		# 	# ground_label : ground truth labels for given sentence (for teacher forcing)
+		# 	log_probs_char = self.px(context_ouput, ground_label)
+		# 	pa = self.pa(context_ouput)
+
+		# 	for (log_prob, target) in zip(log_probs_char, decoder_target):
+		# 		losses.append(dy.pickneglogsoftmax(log_prob, target))
 
 		loss = dy.esum(losses)
 		return loss
@@ -245,12 +263,11 @@ class BaselineClusters(BaselineAgent):
 				loss = self.train_example(examples[idx])
 				batch_loss.append(loss)
 
-				# Minibatching:
-				if (idx % self.minibatch == 0) or (idx + 1 == num_examples):
-					batch_loss = dy.esum(batch_loss)
-					loss_sum += batch_loss.value()
-					batch_loss.backward()
-					batch_loss = []
-					trainer.update()
-					dy.renew_cg()
+			batch_loss = dy.esum(batch_loss)
+			loss_sum += batch_loss.value()
+			batch_loss.backward()
+			batch_loss = []
+			trainer.update()
+			dy.renew_cg()
+
 			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
