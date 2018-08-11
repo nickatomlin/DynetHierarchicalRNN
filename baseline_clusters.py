@@ -324,7 +324,8 @@ class BaselineClusters(BaselineAgent):
 			probs.append(log_prob)
 
 		probs = dy.esum(probs)
-		return probs
+		# We want to maximize this, so return negative:
+		return -probs
 
 
 
@@ -342,7 +343,7 @@ class BaselineClusters(BaselineAgent):
 
 		# Train cluster model:
 		# num_examples = len(examples)
-		num_examples = 500 # TODO: remove this
+		num_examples = 10 # TODO: remove this
 		trainer = dy.SimpleSGDTrainer(self.params)
 
 		for epoch in range(self.num_epochs):

@@ -44,17 +44,17 @@ def main():
 	agent.train(train_data)
 
 	# Testing
-	example = (
-		[1, 4, 1],
-		agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books", "YOU: ok deal"]))
-	prediction = agent.predict_example(example)
-	print(agent.print_utterance(prediction))
+	# example = (
+	# 	[1, 4, 1],
+	# 	agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books", "YOU: ok deal"]))
+	# prediction = agent.predict_example(example)
+	# print(agent.print_utterance(prediction))
 
-	example = (
-		[1, 4, 4, 1, 1, 2],
-		agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books"]))
-	prediction = agent.predict_example(example)
-	print(agent.print_utterance(prediction))
+	# example = (
+	# 	[1, 4, 4, 1, 1, 2],
+	# 	agent.prepare_data(["<PAD>"] + ["THEM: i would like the hat and two books"]))
+	# prediction = agent.predict_example(example)
+	# print(agent.print_utterance(prediction))
 
 
 if __name__ == '__main__':
