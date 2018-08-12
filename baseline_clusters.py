@@ -18,6 +18,8 @@ class BaselineClusters(BaselineAgent):
 	----------
 	num_clusters : int
 		Number of discrete latent variables z(t) for each agreemeent space A.
+	temp : int
+		Temperature parameter tau for Gumbel-softmax
 	"""
 	def __init__(self, num_clusters=50, temp=1, **kwargs):
 		self.num_clusters = num_clusters
@@ -303,6 +305,8 @@ class BaselineClusters(BaselineAgent):
 					z_star = z
 					z_star_onehot = one_hot_z
 			# print(z_star)
+			# print(max_prob.npvalue())
+			# print(z_star)
 			context_state = context_state.add_input(z_star_onehot)
 			z_list.append(z_star)
 
@@ -322,10 +326,11 @@ class BaselineClusters(BaselineAgent):
 
 			log_prob = dy.esum([log_papx, log_pz])
 			probs.append(log_prob)
+			# probs.append(log_papx)
 
 		probs = dy.esum(probs)
-		# We want to maximize this, so return negative:
-		return -probs
+		# TODO: check this:
+		return (probs, z_list)
 
 
 
@@ -344,7 +349,7 @@ class BaselineClusters(BaselineAgent):
 		# Train cluster model:
 		# num_examples = len(examples)
 		num_examples = 10 # TODO: remove this
-		trainer = dy.SimpleSGDTrainer(self.params)
+		trainer = dy.AdamTrainer(self.params)
 
 		for epoch in range(self.num_epochs):
 			batch_loss = []
@@ -362,11 +367,13 @@ class BaselineClusters(BaselineAgent):
 			print("(Clusters) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
 		# Expectation maximization:
+		zs = {}
 		for epoch in range(self.num_epochs):
 			batch_loss = []
 			loss_sum = 0
 			for idx in range(num_examples):
-				loss = self.em_example(examples[idx])
+				loss, z_list = self.em_example(examples[idx])
+				zs[idx] = z_list
 				batch_loss.append(loss)
 
 				# Minibatching:
@@ -378,3 +385,9 @@ class BaselineClusters(BaselineAgent):
 					trainer.update()
 					dy.renew_cg()
 			print("(EM) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+
+		# Print zs to file:
+		with open("data/clusters/clusters.txt", 'w') as f:
+			for idx in range(num_examples):
+				f.write(str(zs[idx]))
+				f.write('\n')

@@ -14,6 +14,7 @@ from parser import BaselineParser
 from parser import ActionClassifierParser
 from agent import Agent
 from baseline_clusters import BaselineClusters
+from full_model import FullModel
 
 """
 Negotiation data example:
@@ -23,14 +24,20 @@ def main():
 	# Initialize Agent and SentenceParser
 	parser = ActionClassifierParser(unk_threshold=20,
 				  input_directory="data/raw/",
-				  output_directory="data/action/")
-	# parser.parse()
+				  output_directory="data/full/")
+	parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
 
-	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=1, num_layers=1)
+	agent = FullModel(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=10, num_layers=1)
 
 	# Training
 	train_data = []
+	clusters = []
+	with open("data/clusters/clusters.txt") as cluster_file:
+		for line in cluster_file:
+			z_list = json.loads(line)
+			clusters.append(z_list)
+
 	with open("data/action/train.txt", "r") as train_file:
 		for line in train_file:
 			train_example = json.loads(line)
@@ -41,7 +48,7 @@ def main():
 			train_data.append((
 				(example_inputs, agent.prepare_data(["<PAD>"] + example_dialogue[:-1])),
 				(agent.prepare_data(example_dialogue), example_agreement)))
-	agent.train(train_data)
+	agent.train(train_data, clusters)
 
 	# Testing
 	# example = (
