@@ -19,15 +19,20 @@ class FullModel(BaselineAgent):
 	num_clusters : int
 		Number of discrete latent variables z(t) for each agreemeent space A.
 	"""
-	def __init__(self, num_clusters=50, **kwargs):
+	def __init__(self, num_clusters=50, temp=1, **kwargs):
 		self.num_clusters = num_clusters
+		self.temp = temp
 		super(FullModel, self).__init__(**kwargs)
 		self.init_language_model()
+		self.init_latent_variable_model()
 
 
 	def init_language_model(self):
 		self.sentence_encoder2 = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
 		self.context_encoder2 = dy.LSTMBuilder(self.num_layers, self.hidden_dim+self.num_clusters, self.hidden_dim, self.params)
+
+	def init_latent_variable_model(self):
+		self.LM_W = self.params.add_parameters((self.num_clusters, self.hidden_dim))
 
 
 	def lm_train_example(self, example, z_list):
@@ -48,10 +53,7 @@ class FullModel(BaselineAgent):
 		for idx in range(num_utterances):
 			h = sentence_final_states[idx]
 			z = z_list[idx]
-			onehot_z = np.zeros(self.num_clusters)
-			onehot_z[z] = 1
-			onehot_z = dy.inputVector(onehot_z)
-			context_inputs.append(dy.concatenate([h, onehot_z]))
+			context_inputs.append(dy.concatenate([h, z]))
 
 		context_state = self.context_encoder2.initial_state()
 		context_outputs = context_state.transduce(context_inputs)
@@ -79,6 +81,45 @@ class FullModel(BaselineAgent):
 		return loss
 
 
+	def pz(self, s):
+		"""
+		Gumbel softmax on distribution over z.
+		"""
+		LM_W = dy.parameter(self.LM_W)
+		prob = dy.softmax(LM_W * s)
+		gumbel = dy.random_gumbel(self.num_clusters)
+		y = []
+		denom = []
+		for z in range(self.num_clusters):
+			pi_i = prob[z]
+			g_i = gumbel[z]
+			val = dy.exp((dy.log(pi_i)+g_i)/self.temp)
+			denom.append(val)
+		denom = dy.esum(denom)
+
+		for z in range(self.num_clusters):
+			pi_i = prob[z]
+			g_i = gumbel[z]
+			numerator = dy.exp((dy.log(pi_i)+g_i)/self.temp)
+			y.append(dy.cdiv(numerator, denom))
+
+		logits = dy.concatenate(y)
+		return logits
+
+
+	def latent_variable_prediction(self, example):
+		encoder_input = example[0]
+		ground_labels = example[1]
+
+		context_outputs = self.encoding(encoder_input)
+		pzs = []
+		for context_output in context_outputs:
+			pz = self.pz(context_output)
+			pzs.append(pz)
+
+		return self.lm_train_example(example, pzs)
+
+
 	def train(self, examples, clusters):
 		# num_examples = len(examples)
 		num_examples = 10
@@ -90,7 +131,13 @@ class FullModel(BaselineAgent):
 			loss_sum = 0
 			for idx in range(num_examples):
 				z_list = clusters[idx]
-				loss = self.lm_train_example(examples[idx], z_list)
+				onehot_zlist = []
+				for z in z_list:
+					onehot_z = np.zeros(self.num_clusters)
+					onehot_z[z] = 1
+					onehot_z = dy.inputVector(onehot_z)
+					onehot_zlist.append(onehot_z)
+				loss = self.lm_train_example(examples[idx], onehot_zlist)
 				batch_loss.append(loss)
 
 				# Minibatching:
@@ -101,4 +148,23 @@ class FullModel(BaselineAgent):
 					batch_loss = []
 					trainer.update()
 					dy.renew_cg()
-			print("Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+			print("(Language Model) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+
+		# Latent Variable Prediction
+		for epoch in range(self.num_epochs):
+			batch_loss = []
+			loss_sum = 0
+			for idx in range(num_examples):
+				z_list = clusters[idx]
+				loss = self.latent_variable_prediction(examples[idx])
+				batch_loss.append(loss)
+
+				# Minibatching:
+				if (idx % self.minibatch == 0) or (idx + 1 == num_examples):
+					batch_loss = dy.esum(batch_loss)
+					loss_sum += batch_loss.value()
+					batch_loss.backward()
+					batch_loss = []
+					trainer.update()
+					dy.renew_cg()
+			print("(Latent Variable Prediction) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))

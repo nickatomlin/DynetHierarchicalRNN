@@ -38,7 +38,7 @@ def main():
 			z_list = json.loads(line)
 			clusters.append(z_list)
 
-	with open("data/action/train.txt", "r") as train_file:
+	with open("data/full/train.txt", "r") as train_file:
 		for line in train_file:
 			train_example = json.loads(line)
 
