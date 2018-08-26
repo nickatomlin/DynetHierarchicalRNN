@@ -7,6 +7,7 @@ import dynet as dy
 from parser import SentenceParser
 from baseline_agent import BaselineAgent
 from action_classifier import ActionClassifier
+import time
 
 class BaselineClusters(BaselineAgent):
 	"""
@@ -46,7 +47,7 @@ class BaselineClusters(BaselineAgent):
 		self.sentence_encoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
 		# TODO: Edit context encoder
 		self.context_encoder = dy.LSTMBuilder(self.num_layers, self.num_clusters, self.hidden_dim, self.params)
-		self.output_decoder = dy.LSTMBuilder(self.num_layers, self.hidden_dim, self.hidden_dim, self.params)
+		self.output_decoder = dy.LSTMBuilder(self.num_layers, 2*self.hidden_dim, self.hidden_dim, self.params)
 
 		self.R = self.params.add_parameters((self.vocab_size, self.hidden_dim))
 		self.b = self.params.add_parameters((self.vocab_size,))
@@ -116,6 +117,8 @@ class BaselineClusters(BaselineAgent):
 
 		decoder_input = [self.vocab.index("<START>")] + utterance
 
+		print(state[-1])
+
 		embedded_decoder_input = [self.embeddings[word] for word in decoder_input]
 		decoder_initial_state = self.output_decoder.initial_state(vecs=[state, state])
 		decoder_output = decoder_initial_state.transduce(embedded_decoder_input)
@@ -181,12 +184,15 @@ class BaselineClusters(BaselineAgent):
 		"""
 		Calculate the log probability of utterance and action given z.
 		"""
+		papx_time = time.time()
 		encoder_input = example[0]
 		labels = example[1]
 		text = labels[0]
 		goal_utterance = text[turn_idx]
 
+		
 		pa = dy.softmax(self.pa(state))
+		px_time = time.time()
 		px = self.px(state, goal_utterance)
 
 		# Calculate px() log probability:
@@ -196,20 +202,19 @@ class BaselineClusters(BaselineAgent):
 			prob = dy.softmax(prob)
 			prob_px.append(dy.log(prob[target]))
 		log_prob_px = dy.esum(prob_px)
+		self.px_time += (time.time() - px_time)
 
 		# Calculate pa() log probability:
-		prev_text = text[:turn_idx]
-		if prev_text == []:
-			prev_text = [[self.vocab.index("<PAD>")]]
-
-		agreement_space = encoder_input[0] # of form [1, 4, 4]
 		agreement = labels[1]
-		cdata = [agreement_space, prev_text, agreement]
-		action = self.classifier.predict_example_idx(cdata)
-		log_prob_pa = dy.log(dy.pick(pa, index=action))
+		agreement_idx = -999
+		for idx in range(self.classifier.agreement_size):
+			if self.classifier.agreement_space[idx] == agreement:
+				agreement_idx = idx
+		log_prob_pa = dy.log(dy.pick(pa, index=agreement_idx))
+		
 		# print("PA: {}".format(log_prob_pa.npvalue()))
 		# print("PX: {}".format(log_prob_px.npvalue()))
-
+		self.papx_time += (time.time() - papx_time)
 		return dy.esum([log_prob_px, log_prob_pa])
 
 
@@ -282,22 +287,19 @@ class BaselineClusters(BaselineAgent):
 		context_state = context_initial_state
 		z_list = []
 		# Expectation
+		e_time = time.time()
 		for idx in range(num_utterances):
-			pz = pzs[idx]
-			max_prob = dy.scalarInput(-9999)
-			z_star = -99999
-			z_star_onehot = np.zeros(self.num_clusters)
-			z_star_onehot[0] = 1
-			z_star_onehot = dy.inputVector(z_star_onehot)
+			pz = dy.nobackprop(pzs[idx])
+			max_prob = dy.scalarInput(-999999999)
+			z_star = -999999999
+			z_star_onehot = self.onehotzs[0] 
 			for z in range(self.num_clusters):
-				one_hot_z = np.zeros(self.num_clusters)
-				one_hot_z[z] = 1
-				one_hot_z = dy.inputVector(one_hot_z)
+				one_hot_z = self.onehotzs[z]
 				state = context_state.add_input(one_hot_z).h()[-1]
-				log_papx = self.log_prob_papx(example, idx, state)
-				log_pz = dy.log(dy.pick(pz, z))
-				# print("PZ: {}".format(log_pz.npvalue()))
-				# print("PAPX: {}".format(log_papx.npvalue()))
+				log_papx = dy.nobackprop(self.log_prob_papx(example, idx, state))
+				log_pz = dy.nobackprop(dy.log(dy.pick(pz, z)))
+				print("PZ: {}".format(log_pz.npvalue()))
+				print("PAPX: {}".format(log_papx.npvalue()))
 				log_prob = dy.esum([log_papx, log_pz])
 				# print("PROB: {}".format(log_prob.npvalue()))
 				if log_prob.value() > max_prob.value():
@@ -309,8 +311,11 @@ class BaselineClusters(BaselineAgent):
 			# print(z_star)
 			context_state = context_state.add_input(z_star_onehot)
 			z_list.append(z_star)
+		self.e_time += (time.time() - e_time)
+
 
 		# Maximization
+		m_time = time.time()
 		context_state = context_initial_state
 		probs = []
 		for idx in range(num_utterances):
@@ -318,19 +323,18 @@ class BaselineClusters(BaselineAgent):
 			z = z_list[idx]
 			log_pz = dy.log(dy.pick(pz, z))
 			
-			one_hot_z = np.zeros(self.num_clusters)
-			one_hot_z[z] = 1
-			one_hot_z = dy.inputVector(one_hot_z)
+			one_hot_z = self.onehotzs[z]
 			state = context_state.add_input(one_hot_z).h()[-1]
-			log_papx = self.log_prob_papx(example, idx, state)
+			# NO BACKPROP:
+			log_papx = dy.nobackprop(self.log_prob_papx(example, idx, state))
 
 			log_prob = dy.esum([log_papx, log_pz])
 			probs.append(log_prob)
 			# probs.append(log_papx)
-
 		probs = dy.esum(probs)
+		self.m_time += (time.time() - m_time)
 		# TODO: check this:
-		return (probs, z_list)
+		return (-probs, z_list)
 
 
 
@@ -348,32 +352,16 @@ class BaselineClusters(BaselineAgent):
 
 		# Train cluster model:
 		# num_examples = len(examples)
-		num_examples = 10 # TODO: remove this
+		num_examples = 100
 		trainer = dy.AdamTrainer(self.params)
 
 		for epoch in range(self.num_epochs):
 			batch_loss = []
 			loss_sum = 0
 			for idx in range(num_examples):
+				if (idx % 1000 == 0):
+					print("(Clusters) Epoch: {} | Example: {} | Loss sum: {}".format(epoch, idx, loss_sum))
 				loss = self.train_example(examples[idx])
-				batch_loss.append(loss)
-
-			batch_loss = dy.esum(batch_loss)
-			loss_sum += batch_loss.value()
-			batch_loss.backward()
-			batch_loss = []
-			trainer.update()
-			dy.renew_cg()
-			print("(Clusters) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
-
-		# Expectation maximization:
-		zs = {}
-		for epoch in range(self.num_epochs):
-			batch_loss = []
-			loss_sum = 0
-			for idx in range(num_examples):
-				loss, z_list = self.em_example(examples[idx])
-				zs[idx] = z_list
 				batch_loss.append(loss)
 
 				# Minibatching:
@@ -384,8 +372,63 @@ class BaselineClusters(BaselineAgent):
 					batch_loss = []
 					trainer.update()
 					dy.renew_cg()
-			print("(EM) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+			print("(Clusters) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
 
+		# Expectation maximization:
+		em_time = time.time()
+		self.e_time = 0
+		self.m_time = 0
+		self.back_time = 0
+		self.papx_time = 0
+		self.pa_time = 0
+		self.px_time = 0
+		zs = {}
+		# Initialize one-hot z's:
+		self.onehotzs = []
+		for idx in range(self.num_clusters):
+			one_hot_z = np.zeros(self.num_clusters)
+			one_hot_z[idx] = 1
+			one_hot_z = dy.inputVector(one_hot_z)
+			self.onehotzs.append(one_hot_z)
+
+
+		for epoch in range(50):
+			batch_loss = []
+			loss_sum = 0
+			for idx in range(num_examples):
+				if (idx % 100 == 0):
+					print("(EM) Epoch: {} | Example: {}".format(epoch, idx))
+				if len(examples[idx][1][1]) == 3: # Agreement occurs
+					loss, z_list = self.em_example(examples[idx])
+					zs[idx] = z_list
+					batch_loss.append(loss)
+				else:
+					zs[idx] = []
+
+				# Minibatching:
+				if (idx % self.minibatch == 0) or (idx + 1 == num_examples) and (batch_loss != []):
+					batch_loss = dy.esum(batch_loss)
+					loss_sum += batch_loss.value()
+					back_time = time.time()
+					batch_loss.backward()
+					batch_loss = []
+					trainer.update()
+					dy.renew_cg()
+					self.onehotzs = []
+					for idx in range(self.num_clusters):
+						one_hot_z = np.zeros(self.num_clusters)
+						one_hot_z[idx] = 1
+						one_hot_z = dy.inputVector(one_hot_z)
+						self.onehotzs.append(one_hot_z)
+					self.back_time += (time.time() - back_time)
+			print("(EM) Epoch: {} | Loss: {}".format(epoch+1, loss_sum))
+		print("EM time: {}".format(time.time() - em_time))
+		print("E time: {}".format(self.e_time))
+		print("M time: {}".format(self.m_time))
+		print("Backprop time: {}".format(self.back_time))
+		print("PAPX time: {}".format(self.papx_time))
+		print("PA time: {}".format(self.pa_time))
+		print("PX time: {}".format(self.px_time))
 		# Print zs to file:
 		with open("data/clusters/clusters.txt", 'w') as f:
 			for idx in range(num_examples):

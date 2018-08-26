@@ -3,6 +3,7 @@ To run this code:
  $ python main.py --dynet-autobatch 1
 """
 
+import os
 import numpy as np
 import warnings
 import random
@@ -25,20 +26,15 @@ def main():
 	parser = ActionClassifierParser(unk_threshold=20,
 				  input_directory="data/raw/",
 				  output_directory="data/full/")
-	parser.parse()
+	# parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
 
-	agent = FullModel(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=10, num_layers=1)
+	agent = BaselineClusters(vocab=parser.vocab, hidden_dim=64, minibatch=16, num_epochs=3, num_layers=1)
 
 	# Training
 	train_data = []
 	clusters = []
-	with open("data/clusters/clusters.txt") as cluster_file:
-		for line in cluster_file:
-			z_list = json.loads(line)
-			clusters.append(z_list)
-
-	with open("data/full/train.txt", "r") as train_file:
+	with open("data/action/train.txt", "r") as train_file:
 		for line in train_file:
 			train_example = json.loads(line)
 
@@ -48,7 +44,24 @@ def main():
 			train_data.append((
 				(example_inputs, agent.prepare_data(["<PAD>"] + example_dialogue[:-1])),
 				(agent.prepare_data(example_dialogue), example_agreement)))
-	agent.train(train_data, clusters)
+	agent.train(train_data)
+
+	# with open("data/clusters/clusters.txt") as cluster_file:
+	# 	for line in cluster_file:
+	# 		z_list = json.loads(line)
+	# 		clusters.append(z_list)
+
+	# with open("data/full/train.txt", "r") as train_file:
+	# 	for line in train_file:
+	# 		train_example = json.loads(line)
+
+	# 		example_inputs = train_example[0]
+	# 		example_dialogue = train_example[1]
+	# 		example_agreement = [int(val) for val in train_example[2]]
+	# 		train_data.append((
+	# 			(example_inputs, agent.prepare_data(["<PAD>"] + example_dialogue[:-1])),
+	# 			(agent.prepare_data(example_dialogue), example_agreement)))
+	# agent.train(train_data, clusters)
 
 	# Testing
 	# example = (

@@ -96,8 +96,9 @@ class ActionClassifier:
 		h = []
 		for utterance in encoder_input:
 			final_state = self.encode(utterance)
-			a_t = dy.circ_conv(final_state, logits)
-			h_t = dy.cmult(final_state, a_t)
+			# a_t = dy.circ_conv(final_state, logits)
+			# h_t = dy.cmult(final_state, a_t)
+			h_t = dy.cmult(final_state, logits)
 			h.append(h_t)
 		h = dy.esum(h)
 		logits = self.MLP2(h)
@@ -159,7 +160,7 @@ class ActionClassifier:
 
 	def train(self, examples):
 		num_examples = len(examples)
-		trainer = dy.SimpleSGDTrainer(self.params)
+		trainer = dy.AdamTrainer(self.params)
 
 		for epoch in range(self.num_epochs):
 			batch_loss = []
@@ -185,7 +186,7 @@ if __name__ == '__main__':
 	parser = ActionClassifierParser(unk_threshold=20,
 				  input_directory="data/raw/",
 				  output_directory="data/action/")
-	parser.parse()
+	# parser.parse()
 	print("Vocab size: {}".format(parser.vocab_size))
 	classifier = ActionClassifier(vocab=parser.vocab, hidden_dim=64, num_epochs=30)
 
